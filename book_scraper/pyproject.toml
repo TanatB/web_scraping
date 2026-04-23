@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "beautifulsoup4>=4.14.3",
+    "fastparquet>=2026.3.0",
     "httpx>=0.28.1",
+    "pandas>=3.0.2",
+    "pyarrow>=24.0.0",
     "requests>=2.33.1",
 ]
