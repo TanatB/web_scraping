@@ -2,7 +2,7 @@ import asyncio
 import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import pandas as pd
 
 BASE_URL = "https://books.toscrape.com/"
@@ -11,13 +11,14 @@ RATING_MAP = {"One": 1, "Two": 2, "Three": 3, "Four": 4, "Five": 5}
 
 @dataclass
 class Book:
+    """Class for keeping book information"""
     title: str = ""
-    product_description: str = ""
     upc: str = ""
     rating: int = -1
     price: float = -1.0
     availability: str = ""
     number_of_reviews: int = -1
+    product_description: str = ""
 
 async def find_page_length(client: httpx.AsyncClient, url: str) -> int:
     """
@@ -58,7 +59,6 @@ async def scrape_catalogue_page(client: httpx.AsyncClient, url: str) -> list[str
         for h3 in soup.find_all("h3")
     ]
     
-    print("Book Catalogue Pages parsed.")
     return book_urls
 
 async def fetch_book_html(client: httpx.AsyncClient, 
@@ -86,11 +86,6 @@ async def parse_book(html: str) -> Book:
     h1 = soup.find("h1")
     book.title = h1.text.strip() if h1 else ""
 
-    # Description
-    product_desc_header = soup.find("div", id="product_description")
-    if product_desc_header:
-        desc_p = product_desc_header.find_next_sibling("p")
-        book.product_description = desc_p.text.strip() if desc_p else ""
 
     # Star Rating
     star_rating = soup.find("p", class_="star-rating")
@@ -101,7 +96,10 @@ async def parse_book(html: str) -> Book:
     # Price
     price_tag = soup.find("p", class_="price_color")
     if price_tag:
-        book.price = float(price_tag.text.strip().replace("£", ""))
+        book.price = float(
+            price_tag.text.strip().replace("£", "").replace("Â", "")
+        )
+    
     # Availability
     avail_tag = soup.find("p", class_="availability")
     book.availability = avail_tag.text.strip() if avail_tag else ""
@@ -116,10 +114,18 @@ async def parse_book(html: str) -> Book:
         book.upc = rows.get("UPC", "")
         book.number_of_reviews = int(rows.get("Number of reviews", -1))
     
+    # Description
+    product_desc_header = soup.find("div", id="product_description")
+    if product_desc_header:
+        desc_p = product_desc_header.find_next_sibling("p")
+        book.product_description = desc_p.text.strip() if desc_p else ""
+
     return book
 
-def save_to_csv(data: Book):
-    pass
+def export_dataset(data: list[Book]):
+    df = pd.DataFrame([asdict(book) for book in data])
+    df.to_csv("books.csv", index=False)
+    df.to_parquet("books.parquet", index=False)
 
 
 async def main():
@@ -140,6 +146,8 @@ async def main():
         all_book_urls = [url for page in all_page_results for url in page]
         print(f"Total books found: {len(all_book_urls)}")
 
+        print("=" * 50)
+        print("fetching books...")
         # fetch all book detail pages concurrently
         semaphore = asyncio.Semaphore(20)
         all_html = await asyncio.gather(
@@ -148,6 +156,10 @@ async def main():
 
         # parse each book
         books = await asyncio.gather(*[parse_book(html) for html in all_html])
+
+        # export
+        export_dataset(books)
+        print("Dataset Exported.")
 
     # Preview first 3 results
     for book in books[:3]:
