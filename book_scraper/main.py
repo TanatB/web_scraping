@@ -22,7 +22,7 @@ class Book:
 
 async def find_page_length(client: httpx.AsyncClient, url: str) -> int:
     """
-    Test
+    Find the number of page indexes to scrape
 
     Args:
         client (httpx.AsyncClient): Asynchronous client from httpx module
@@ -53,7 +53,7 @@ async def scrape_catalogue_page(client: httpx.AsyncClient, url: str) -> list[str
     response = await client.get(url)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # FIX
+    # FIXED
     book_urls = [
         urljoin(url, h3.find("a")["href"])
         for h3 in soup.find_all("h3")
@@ -65,6 +65,18 @@ async def fetch_book_html(client: httpx.AsyncClient,
                           url: str,
                           semaphore: asyncio.Semaphore
                           ) -> str:
+    """
+    Fetch each book's html using httpx along with asyncio.semaphore
+
+    Args:
+        client (httpx.AsyncClient): Asynchronous client from httpx module
+        url (str): BASE_URL (books.toscrape.com)
+        semaphore (asyncio.Semaphore): asyncio Semaphore method limiting 
+        the amount of fetching per time
+
+    Returns:
+        str: html string of the book page
+    """
     async with semaphore:
         response = await client.get(url)
         return response.text
@@ -85,7 +97,6 @@ async def parse_book(html: str) -> Book:
     # Title
     h1 = soup.find("h1")
     book.title = h1.text.strip() if h1 else ""
-
 
     # Star Rating
     star_rating = soup.find("p", class_="star-rating")
@@ -123,13 +134,18 @@ async def parse_book(html: str) -> Book:
     return book
 
 def export_dataset(data: list[Book]):
+    """
+    Export dataclass to CSV & parquet format
+
+    Args:
+        data (list[Book]): list of Book dataclass
+    """
     df = pd.DataFrame([asdict(book) for book in data])
     df.to_csv("books.csv", index=False)
     df.to_parquet("books.parquet", index=False)
 
 
 async def main():
-    # TODO: add queue for worker to scrape 10-20 books at a time
     async with httpx.AsyncClient() as client:
         page_count = await find_page_length(client, BASE_URL)
         print(f"Total pages: {page_count}")
@@ -148,7 +164,7 @@ async def main():
 
         print("=" * 50)
         print("fetching books...")
-        # fetch all book detail pages concurrently
+        # fetch all book detail pages concurrently (20 at a time)
         semaphore = asyncio.Semaphore(20)
         all_html = await asyncio.gather(
             *[fetch_book_html(client, url, semaphore) for url in all_book_urls]
