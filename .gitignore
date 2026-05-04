@@ -2,3 +2,6 @@
 *.csv
 *.parquet
 uv.lock
+__pycache__
+.venv
+.env
